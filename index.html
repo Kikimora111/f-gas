@@ -2,113 +2,178 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>F-gas 历史排放数据可视化</title>
+    <title>多源排放数据对比分析</title>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <style>
-        body { font-family: sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; }
-        h1 { text-align: center; color: #333; }
-        #chart-container { width: 100%; height: 600px; margin-top: 20px; border: 1px solid #ddd; }
-        .download-btn {
-            display: block; width: 200px; margin: 20px auto; padding: 10px;
-            text-align: center; background-color: #2ea44f; color: white;
-            text-decoration: none; border-radius: 5px; font-weight: bold;
+        body { font-family: 'Segoe UI', Roboto, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; }
+        h1 { text-align: center; color: #333; margin-bottom: 30px; }
+        
+        /* 控制面板样式 */
+        .controls {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            border: 1px solid #e9ecef;
         }
-        .download-btn:hover { background-color: #2c974b; }
+        select {
+            padding: 8px 12px;
+            font-size: 16px;
+            border-radius: 4px;
+            border: 1px solid #ced4da;
+            min-width: 200px;
+        }
+        
+        #chart-container { width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 4px; }
+        .footer { text-align: center; margin-top: 20px; color: #666; font-size: 0.9em; }
     </style>
 </head>
 <body>
 
-    <h1>F-gas 物质历史逐年排放量</h1>
-    <p style="text-align: center;">数据来源：公开数据库 | 更新时间：2026年</p>
+    <h1>🧪 F-gas 多源排放数据对比</h1>
+
+    <div class="controls">
+        <label for="substance-select"><strong>选择要分析的物质：</strong></label>
+        <select id="substance-select">
+            <option value="">正在加载数据...</option>
+        </select>
+    </div>
 
     <div id="chart-container"></div>
 
-    <a href="data.csv" class="download-btn" download="F-gas_Emissions_Data.csv">
-        📥 下载源数据 (CSV)
-    </a>
+    <div class="footer">
+        数据来源：多源对比分析 | <a href="data.csv" download>📥 下载源数据</a>
+    </div>
 
     <script>
-        // 初始化图表
         var myChart = echarts.init(document.getElementById('chart-container'));
+        var globalData = []; // 存储读取到的完整数据
+        var distinctYears = []; // 存储所有年份
 
-        // 显示“加载中”提示
         myChart.showLoading();
 
-        // 使用 PapaParse 读取同目录下的 data.csv 文件
         Papa.parse("data.csv", {
             download: true,
-            header: true, // 识别第一行为标题
-            dynamicTyping: true, // 自动把字符串转为数字
+            header: true,
+            dynamicTyping: true,
+            skipEmptyLines: true,
             complete: function(results) {
                 myChart.hideLoading();
-                var data = results.data;
                 
-                // 数据清洗：移除空行
-                data = data.filter(row => row.Year != null);
+                // 1. 数据预处理
+                var rawData = results.data;
+                var columns = results.meta.fields;
 
-                // 提取年份（X轴）
-                var years = data.map(item => item.Year);
+                // 简单的错误检查
+                if (!columns.includes("Source") || !columns.includes("Year")) {
+                    alert("CSV格式错误！必须包含 'Year' 和 'Source' 列（注意首字母大写）。");
+                    return;
+                }
 
-                // 自动获取所有物质名称（除了Year以外的所有列名）
-                var substanceNames = results.meta.fields.filter(field => field !== "Year");
+                // 2. 提取所有物质名称 (排除 Year 和 Source)
+                var substances = columns.filter(col => col !== "Year" && col !== "Source");
 
-                // 构建 ECharts 需要的 Series 数据
-                var seriesData = substanceNames.map(name => {
-                    return {
-                        name: name,
-                        type: 'line', // 折线图
-                        smooth: true, // 平滑曲线
-                        data: data.map(item => item[name]),
-                        symbol: 'none' // 数据点太多时不显示圆点，鼠标悬停才显示
-                    };
+                // 3. 提取所有年份 (去重并排序)
+                var yearsSet = new Set(rawData.map(row => row.Year));
+                distinctYears = Array.from(yearsSet).sort((a, b) => a - b);
+
+                // 4. 填充下拉菜单
+                var selectEl = document.getElementById('substance-select');
+                selectEl.innerHTML = ""; // 清空加载提示
+                
+                substances.forEach((sub, index) => {
+                    var option = document.createElement("option");
+                    option.value = sub;
+                    option.text = sub;
+                    selectEl.appendChild(option);
                 });
 
-                // 配置图表选项
-                var option = {
-                    tooltip: {
-                        trigger: 'axis', // 鼠标悬停显示由于数据
-                        order: 'valueDesc' //按数值大小排序
-                    },
-                    legend: {
-                        data: substanceNames, // 顶部图例
-                        type: 'scroll', // 物质太多时可以滚动
-                        bottom: 0
-                    },
-                    grid: {
-                        left: '3%', right: '4%', bottom: '10%', containLabel: true
-                    },
-                    xAxis: {
-                        type: 'category',
-                        boundaryGap: false,
-                        data: years,
-                        name: '年份'
-                    },
-                    yAxis: {
-                        type: 'value',
-                        name: '排放量 (吨/CO2e)'
-                    },
-                    // 允许缩放查看细节
-                    dataZoom: [
-                        { type: 'inside', start: 0, end: 100 },
-                        { type: 'slider', start: 0, end: 100 }
-                    ],
-                    series: seriesData
-                };
+                // 5. 存储数据并初始化图表
+                globalData = rawData;
+                
+                // 默认选中第一个物质并画图
+                updateChart(substances[0]);
 
-                // 渲染图表
-                myChart.setOption(option);
+                // 监听下拉菜单变化
+                selectEl.addEventListener('change', function(e) {
+                    updateChart(e.target.value);
+                });
             },
             error: function(err) {
-                alert("数据读取失败，请检查 data.csv 是否存在");
-                console.error(err);
+                alert("无法读取 data.csv，请检查文件是否上传。");
             }
         });
 
-        // 窗口大小改变时自动重绘
-        window.addEventListener('resize', function() {
-            myChart.resize();
-        });
+        // 核心函数：根据选中的物质更新图表
+        function updateChart(selectedSubstance) {
+            // 1. 找出数据里所有的来源 (Source)，比如 EDGAR, EPA
+            // Set 自动去重
+            var sources = Array.from(new Set(globalData.map(row => row.Source)));
+
+            // 2. 为每个 Source 构建一条线
+            var seriesData = sources.map(sourceName => {
+                
+                // 找到该 Source 对应的所有行
+                var sourceRows = globalData.filter(row => row.Source === sourceName);
+                
+                // 把数据映射到年份轴上 (防止某一年缺失导致错位)
+                var dataPoints = distinctYears.map(year => {
+                    // 找这一年、这个Source对应的那一行
+                    var row = sourceRows.find(r => r.Year === year);
+                    // 如果找到了，返回对应的物质数值；如果没找到，返回 null (图表会断开)
+                    return row ? row[selectedSubstance] : null;
+                });
+
+                return {
+                    name: sourceName, // 线条名字现在是“来源”
+                    type: 'line',
+                    smooth: true,
+                    data: dataPoints,
+                    symbolSize: 8
+                };
+            });
+
+            // 3. 设置图表配置
+            var option = {
+                title: {
+                    text: selectedSubstance + ' 排放量对比',
+                    left: 'center',
+                    top: 10
+                },
+                tooltip: {
+                    trigger: 'axis'
+                },
+                legend: {
+                    data: sources, // 图例显示的是来源
+                    bottom: 0,
+                    padding: 20
+                },
+                grid: {
+                    left: '3%', right: '4%', bottom: '15%', containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    name: '年份',
+                    data: distinctYears
+                },
+                yAxis: {
+                    type: 'value',
+                    name: '排放量 (吨/CO2e)'
+                },
+                series: seriesData,
+                // 颜色盘：如果线条多，自动循环这些颜色
+                color: ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272']
+            };
+
+            myChart.setOption(option, true); // true 表示不合并旧数据，完全重绘
+        }
+
+        window.addEventListener('resize', () => myChart.resize());
     </script>
 </body>
 </html>
