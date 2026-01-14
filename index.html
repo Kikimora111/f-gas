@@ -57,7 +57,8 @@
 
         myChart.showLoading();
 
-        Papa.parse("data.csv?v=2", {
+       
+Papa.parse("data.csv?t=" + new Date().getTime(), {
             download: true,
             header: true,
             dynamicTyping: true,
